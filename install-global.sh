@@ -55,14 +55,50 @@ echo "  ✓ Auto Compact threshold set to ${threshold}%"
 
 # 2. Canary pattern
 echo ""
-echo "[2/4] Configure Canary Pattern"
+echo "[2/5] Configure Canary Pattern"
 echo "  Default: check if output starts with ///"
 read -p "  Enter regex pattern (default ^///): " pattern
 pattern="${pattern:-^///}"
 
-# 3. Install daemon
+# 3. Notification style
 echo ""
-echo "[3/4] Install Global Daemon"
+echo "[3/5] Choose Notification Style"
+echo ""
+echo "  1) minimal  - Clean and simple"
+echo "     [ALERT] project: Context rot detected. 5 failures. Run /compact"
+echo ""
+echo "  2) emoji    - Eye-catching with emojis (Recommended)"
+echo "     🚨🚨🚨 🔴 [project] CONTEXT ROT DETECTED! 💀 5 failures! ⚠️ Run /compact NOW! 🆘"
+echo ""
+echo "  3) ascii    - ASCII art banner"
+echo "     ╔══════════════════════════════════════════╗"
+echo "     ║  CONTEXT ROT DETECTED!                   ║"
+echo "     ╚══════════════════════════════════════════╝"
+echo ""
+echo "  4) custom   - Define your own messages"
+echo ""
+read -p "  Choose style (1-4, default 2): " style_choice
+style_choice="${style_choice:-2}"
+
+case "$style_choice" in
+    1) notification_style="minimal" ;;
+    3) notification_style="ascii" ;;
+    4) notification_style="custom"
+       echo ""
+       echo "  Custom message variables: \$project, \$count, \$threshold"
+       read -p "  Critical message: " custom_critical
+       read -p "  Warning message: " custom_warning
+       custom_critical="${custom_critical:-🚨 \$project context rot! \$count failures!}"
+       custom_warning="${custom_warning:-⚠️ \$project warning (\$count/\$threshold)}"
+       ;;
+    *) notification_style="emoji" ;;
+esac
+
+echo "  ✓ Notification style: $notification_style"
+
+# 4. Install daemon
+echo ""
+echo "[4/5] Install Global Daemon"
 
 mkdir -p "$PLUGINS_DIR"
 cp "$SCRIPT_DIR/$DAEMON_SCRIPT" "$PLUGINS_DIR/"
@@ -70,18 +106,32 @@ chmod +x "$PLUGINS_DIR/$DAEMON_SCRIPT"
 echo "  ✓ Installed $PLUGINS_DIR/$DAEMON_SCRIPT"
 
 # Create config
-cat > "${CLAUDE_DIR}/canary-config.json" << EOF
+if [ "$notification_style" = "custom" ]; then
+    cat > "${CLAUDE_DIR}/canary-config.json" << EOF
 {
   "canary_pattern": "$pattern",
   "failure_threshold": 2,
-  "check_interval": 2
+  "check_interval": 2,
+  "notification_style": "$notification_style",
+  "custom_critical_msg": "$custom_critical",
+  "custom_warning_msg": "$custom_warning"
 }
 EOF
+else
+    cat > "${CLAUDE_DIR}/canary-config.json" << EOF
+{
+  "canary_pattern": "$pattern",
+  "failure_threshold": 2,
+  "check_interval": 2,
+  "notification_style": "$notification_style"
+}
+EOF
+fi
 echo "  ✓ Created ${CLAUDE_DIR}/canary-config.json"
 
-# 4. Auto-start on boot
+# 5. Auto-start on boot
 echo ""
-echo "[4/4] Configure Auto-Start"
+echo "[5/5] Configure Auto-Start"
 
 if [[ "$OSTYPE" == "darwin"* ]]; then
     PLIST="${HOME}/Library/LaunchAgents/com.claude.canary.plist"

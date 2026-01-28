@@ -15,6 +15,7 @@ CHECKED_FILE="/tmp/${DAEMON_NAME}.checked"
 DEFAULT_CANARY_PATTERN="^///"
 DEFAULT_FAILURE_THRESHOLD=2
 DEFAULT_CHECK_INTERVAL=2
+DEFAULT_NOTIFICATION_STYLE="emoji"  # minimal, emoji, ascii, custom
 
 # Simple JSON parsing (no jq required)
 json_get() {
@@ -29,10 +30,89 @@ load_config() {
         CANARY_PATTERN=$(json_get "$CONFIG_FILE" "canary_pattern")
         FAILURE_THRESHOLD=$(json_get "$CONFIG_FILE" "failure_threshold")
         CHECK_INTERVAL=$(json_get "$CONFIG_FILE" "check_interval")
+        NOTIFICATION_STYLE=$(json_get "$CONFIG_FILE" "notification_style")
+        CUSTOM_CRITICAL_MSG=$(json_get "$CONFIG_FILE" "custom_critical_msg")
+        CUSTOM_WARNING_MSG=$(json_get "$CONFIG_FILE" "custom_warning_msg")
     fi
     CANARY_PATTERN="${CANARY_PATTERN:-$DEFAULT_CANARY_PATTERN}"
     FAILURE_THRESHOLD="${FAILURE_THRESHOLD:-$DEFAULT_FAILURE_THRESHOLD}"
     CHECK_INTERVAL="${CHECK_INTERVAL:-$DEFAULT_CHECK_INTERVAL}"
+    NOTIFICATION_STYLE="${NOTIFICATION_STYLE:-$DEFAULT_NOTIFICATION_STYLE}"
+}
+
+# Format notification message based on style
+format_notification() {
+    local type="$1"      # critical or warning
+    local project="$2"
+    local count="$3"
+    local threshold="$4"
+
+    case "$NOTIFICATION_STYLE" in
+        minimal)
+            # Style 1: Clean and minimal
+            if [ "$type" = "critical" ]; then
+                echo "[ALERT] $project: Context rot detected. $count failures. Run /compact"
+            else
+                echo "[$project] Canary check failed ($count/$threshold)"
+            fi
+            ;;
+        emoji)
+            # Style 2: Emoji party
+            if [ "$type" = "critical" ]; then
+                echo "🚨🚨🚨 🔴 [$project] CONTEXT ROT DETECTED! 💀 $count failures! ⚠️ Run /compact NOW! 🆘"
+            else
+                echo "🟡 [$project] Instruction not followed ($count/$threshold) 👀"
+            fi
+            ;;
+        ascii)
+            # Style 3: ASCII art style
+            if [ "$type" = "critical" ]; then
+                echo "
+╔══════════════════════════════════════════╗
+║  ██████╗ ██████╗ ████████╗██╗            ║
+║  ██╔══██╗██╔═══██╗╚══██╔══╝██║           ║
+║  ██████╔╝██║   ██║   ██║   ██║           ║
+║  ██╔══██╗██║   ██║   ██║   ╚═╝           ║
+║  ██║  ██║╚██████╔╝   ██║   ██╗           ║
+║  ╚═╝  ╚═╝ ╚═════╝    ╚═╝   ╚═╝           ║
+╠══════════════════════════════════════════╣
+║  PROJECT: $project
+║  FAILURES: $count consecutive
+║  ACTION: Run /compact or /clear NOW!
+╚══════════════════════════════════════════╝"
+            else
+                echo "
+┌─ CANARY WARNING ─────────────────────────┐
+│ Project: $project
+│ Status: $count/$threshold failures
+└──────────────────────────────────────────┘"
+            fi
+            ;;
+        custom)
+            # Style 4: User custom messages
+            if [ "$type" = "critical" ]; then
+                local msg="${CUSTOM_CRITICAL_MSG:-Context rot in \$project! \$count failures!}"
+                msg="${msg//\$project/$project}"
+                msg="${msg//\$count/$count}"
+                msg="${msg//\$threshold/$threshold}"
+                echo "$msg"
+            else
+                local msg="${CUSTOM_WARNING_MSG:-Warning: \$project failed (\$count/\$threshold)}"
+                msg="${msg//\$project/$project}"
+                msg="${msg//\$count/$count}"
+                msg="${msg//\$threshold/$threshold}"
+                echo "$msg"
+            fi
+            ;;
+        *)
+            # Default to emoji style
+            if [ "$type" = "critical" ]; then
+                echo "🚨🚨🚨 🔴 [$project] CONTEXT ROT DETECTED! 💀 $count failures! ⚠️ Run /compact NOW! 🆘"
+            else
+                echo "🟡 [$project] Instruction not followed ($count/$threshold) 👀"
+            fi
+            ;;
+    esac
 }
 
 log() {
@@ -148,13 +228,11 @@ watch_loop() {
                     local project=$(echo "$transcript" | sed "s|$CLAUDE_PROJECTS_DIR/||" | cut -d'/' -f1)
 
                     if [ "$count" -ge "$FAILURE_THRESHOLD" ]; then
-                        send_notification "🚨🚨🚨 Context Canary" \
-                            "🔴🔴🔴 [$project] CONTEXT ROT DETECTED! 💀💀💀 ${count} consecutive failures! ⚠️⚠️⚠️ Run /compact NOW! 🆘🆘🆘" \
-                            "critical"
+                        local msg=$(format_notification "critical" "$project" "$count" "$FAILURE_THRESHOLD")
+                        send_notification "Context Canary" "$msg" "critical"
                     else
-                        send_notification "⚠️ Context Canary" \
-                            "🟡 [$project] Instruction not followed (${count}/${FAILURE_THRESHOLD}) 👀" \
-                            "normal"
+                        local msg=$(format_notification "warning" "$project" "$count" "$FAILURE_THRESHOLD")
+                        send_notification "Context Canary" "$msg" "normal"
                     fi
                 fi
             fi
