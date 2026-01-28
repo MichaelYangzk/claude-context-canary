@@ -148,12 +148,12 @@ watch_loop() {
                     local project=$(echo "$transcript" | sed "s|$CLAUDE_PROJECTS_DIR/||" | cut -d'/' -f1)
 
                     if [ "$count" -ge "$FAILURE_THRESHOLD" ]; then
-                        send_notification "Context Canary" \
-                            "[$project] Context rot detected! ${count} consecutive failures. Run /compact" \
+                        send_notification "🚨🚨🚨 Context Canary" \
+                            "🔴🔴🔴 [$project] CONTEXT ROT DETECTED! 💀💀💀 ${count} consecutive failures! ⚠️⚠️⚠️ Run /compact NOW! 🆘🆘🆘" \
                             "critical"
                     else
-                        send_notification "Context Canary" \
-                            "[$project] Instruction not followed (${count}/${FAILURE_THRESHOLD})" \
+                        send_notification "⚠️ Context Canary" \
+                            "🟡 [$project] Instruction not followed (${count}/${FAILURE_THRESHOLD}) 👀" \
                             "normal"
                     fi
                 fi
