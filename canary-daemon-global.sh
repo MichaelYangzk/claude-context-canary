@@ -1,6 +1,6 @@
 #!/bin/bash
 #
-# Claude Context Canary - 全局监控守护进程 (无 jq 依赖)
+# Claude Context Canary - Global Monitoring Daemon (no jq dependency)
 #
 
 DAEMON_NAME="claude-context-canary-global"
@@ -11,12 +11,12 @@ STATE_FILE="${HOME}/.claude/canary-state.json"
 CLAUDE_PROJECTS_DIR="${HOME}/.claude/projects"
 CHECKED_FILE="/tmp/${DAEMON_NAME}.checked"
 
-# 默认配置
+# Default configuration
 DEFAULT_CANARY_PATTERN="^///"
 DEFAULT_FAILURE_THRESHOLD=2
 DEFAULT_CHECK_INTERVAL=2
 
-# 简单 JSON 解析（无需 jq）
+# Simple JSON parsing (no jq required)
 json_get() {
     local file="$1"
     local key="$2"
@@ -79,11 +79,11 @@ check_transcript() {
         return 0
     fi
 
-    # 获取最后一条 assistant 消息的文本
+    # Get the last assistant message text
     local last_response=""
     while IFS= read -r line; do
         if echo "$line" | grep -q '"type"[[:space:]]*:[[:space:]]*"assistant"'; then
-            # 提取第一个 text 字段
+            # Extract first text field
             local text=$(echo "$line" | sed 's/.*"text"[[:space:]]*:[[:space:]]*"//' | sed 's/".*//' | head -c 500)
             if [ -n "$text" ] && [ "$text" != "$line" ]; then
                 last_response="$text"
@@ -135,9 +135,9 @@ watch_loop() {
     mkdir -p "$(dirname "$LOG_FILE")"
     : > "$CHECKED_FILE"
 
-    log "========== 全局守护进程启动 =========="
-    log "配置: pattern=$CANARY_PATTERN, threshold=$FAILURE_THRESHOLD, interval=${CHECK_INTERVAL}s"
-    log "监控目录: $CLAUDE_PROJECTS_DIR"
+    log "========== Global Daemon Started =========="
+    log "Config: pattern=$CANARY_PATTERN, threshold=$FAILURE_THRESHOLD, interval=${CHECK_INTERVAL}s"
+    log "Monitoring: $CLAUDE_PROJECTS_DIR"
 
     while true; do
         while IFS= read -r transcript; do
@@ -148,11 +148,11 @@ watch_loop() {
 
                     if [ "$count" -ge "$FAILURE_THRESHOLD" ]; then
                         send_notification "Context Canary" \
-                            "[$project] 上下文腐烂! 连续${count}次失败. 执行 /compact" \
+                            "[$project] Context rot detected! ${count} consecutive failures. Run /compact" \
                             "critical"
                     else
                         send_notification "Context Canary" \
-                            "[$project] 未遵循指令 (${count}/${FAILURE_THRESHOLD})" \
+                            "[$project] Instruction not followed (${count}/${FAILURE_THRESHOLD})" \
                             "normal"
                     fi
                 fi
@@ -167,23 +167,23 @@ start_daemon() {
     if [ -f "$PID_FILE" ]; then
         local old_pid=$(cat "$PID_FILE")
         if kill -0 "$old_pid" 2>/dev/null; then
-            echo "守护进程已在运行 (PID: $old_pid)"
+            echo "Daemon already running (PID: $old_pid)"
             return 1
         fi
     fi
 
-    echo "启动全局守护进程..."
+    echo "Starting global daemon..."
     nohup "$0" watch > /dev/null 2>&1 &
     local pid=$!
     echo $pid > "$PID_FILE"
-    echo "✓ 守护进程已启动 (PID: $pid)"
-    echo "✓ 日志: $LOG_FILE"
-    echo "✓ 监控: $CLAUDE_PROJECTS_DIR"
+    echo "✓ Daemon started (PID: $pid)"
+    echo "✓ Log file: $LOG_FILE"
+    echo "✓ Monitoring: $CLAUDE_PROJECTS_DIR"
 }
 
 stop_daemon() {
     if [ ! -f "$PID_FILE" ]; then
-        echo "守护进程未运行"
+        echo "Daemon not running"
         return 1
     fi
 
@@ -191,47 +191,47 @@ stop_daemon() {
     if kill -0 "$pid" 2>/dev/null; then
         kill "$pid"
         rm -f "$PID_FILE"
-        echo "✓ 守护进程已停止 (PID: $pid)"
+        echo "✓ Daemon stopped (PID: $pid)"
     else
         rm -f "$PID_FILE"
-        echo "守护进程不存在，已清理"
+        echo "Daemon not found, cleaned up PID file"
     fi
 }
 
 show_status() {
     echo "=========================================="
-    echo "  Claude Context Canary - 全局监控状态"
+    echo "  Claude Context Canary - Global Status"
     echo "=========================================="
     echo ""
 
     if [ -f "$PID_FILE" ]; then
         local pid=$(cat "$PID_FILE")
         if kill -0 "$pid" 2>/dev/null; then
-            echo "守护进程: 运行中 (PID: $pid)"
+            echo "Daemon: Running (PID: $pid)"
         else
-            echo "守护进程: 未运行"
+            echo "Daemon: Not running"
         fi
     else
-        echo "守护进程: 未运行"
+        echo "Daemon: Not running"
     fi
 
     load_config
     echo ""
-    echo "配置:"
-    echo "  金丝雀模式: $CANARY_PATTERN"
-    echo "  失败阈值: $FAILURE_THRESHOLD"
-    echo "  检查间隔: ${CHECK_INTERVAL}s"
+    echo "Configuration:"
+    echo "  Canary Pattern: $CANARY_PATTERN"
+    echo "  Failure Threshold: $FAILURE_THRESHOLD"
+    echo "  Check Interval: ${CHECK_INTERVAL}s"
 
     if [ -f "$STATE_FILE" ]; then
         echo ""
-        echo "检测状态:"
-        echo "  连续失败: $(json_get "$STATE_FILE" "failure_count")"
-        echo "  最后失败: $(json_get "$STATE_FILE" "last_failure")"
-        echo "  最后项目: $(json_get "$STATE_FILE" "last_project")"
+        echo "Detection State:"
+        echo "  Consecutive Failures: $(json_get "$STATE_FILE" "failure_count")"
+        echo "  Last Failure: $(json_get "$STATE_FILE" "last_failure")"
+        echo "  Last Project: $(json_get "$STATE_FILE" "last_project")"
     fi
 
     echo ""
-    echo "活跃项目 (最近 5 分钟):"
+    echo "Active Projects (last 5 minutes):"
     local count=0
     while IFS= read -r transcript; do
         if [ -n "$transcript" ]; then
@@ -241,15 +241,15 @@ show_status() {
         fi
     done <<< "$(get_active_transcripts)"
     if [ "$count" -eq 0 ]; then
-        echo "  (无)"
+        echo "  (none)"
     fi
 
     echo ""
-    echo "最近日志:"
+    echo "Recent Logs:"
     if [ -f "$LOG_FILE" ]; then
         tail -5 "$LOG_FILE" | sed 's/^/  /'
     else
-        echo "  (无日志)"
+        echo "  (no logs)"
     fi
 }
 
@@ -260,7 +260,7 @@ case "$1" in
     status) show_status ;;
     watch)  watch_loop ;;
     *)
-        echo "用法: $0 {start|stop|restart|status|watch}"
+        echo "Usage: $0 {start|stop|restart|status|watch}"
         exit 1
         ;;
 esac

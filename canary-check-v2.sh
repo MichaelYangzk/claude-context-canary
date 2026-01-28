@@ -1,36 +1,36 @@
 #!/bin/bash
 #
-# Claude Context Canary v2 - 上下文腐烂检测脚本
+# Claude Context Canary v2 - Context Rot Detection Script
 #
-# 使用 UserPromptSubmit hook - 在用户发送消息前检查上一条 Claude 响应
+# Uses UserPromptSubmit hook - checks previous Claude response before user sends message
 #
 
-# 配置文件路径
+# Config file paths
 CONFIG_FILE="${HOME}/.claude/canary-config.json"
 STATE_FILE="${HOME}/.claude/canary-state.json"
 
-# 默认配置
+# Default configuration
 DEFAULT_CANARY_PATTERN="^///"
 DEFAULT_FAILURE_THRESHOLD=2
 DEFAULT_AUTO_ACTION="warn"  # warn | block
 
-# 读取 stdin 获取 hook 输入
+# Read stdin to get hook input
 HOOK_INPUT=$(cat)
 
-# 解析 hook 输入
+# Parse hook input
 TRANSCRIPT_PATH=$(echo "$HOOK_INPUT" | jq -r '.transcript_path // empty')
 SESSION_ID=$(echo "$HOOK_INPUT" | jq -r '.session_id // empty')
 HOOK_EVENT=$(echo "$HOOK_INPUT" | jq -r '.hook_event_name // empty')
 
-# 调试日志（可选）
+# Debug log (optional)
 # echo "$(date): Hook triggered - $HOOK_EVENT" >> /tmp/canary-debug.log
 
-# 如果没有 transcript_path，直接退出
+# If no transcript_path, exit directly
 if [ -z "$TRANSCRIPT_PATH" ] || [ ! -f "$TRANSCRIPT_PATH" ]; then
     exit 0
 fi
 
-# 读取配置
+# Read configuration
 if [ -f "$CONFIG_FILE" ]; then
     CANARY_PATTERN=$(jq -r '.canary_pattern // empty' "$CONFIG_FILE")
     FAILURE_THRESHOLD=$(jq -r '.failure_threshold // empty' "$CONFIG_FILE")
@@ -41,13 +41,13 @@ CANARY_PATTERN="${CANARY_PATTERN:-$DEFAULT_CANARY_PATTERN}"
 FAILURE_THRESHOLD="${FAILURE_THRESHOLD:-$DEFAULT_FAILURE_THRESHOLD}"
 AUTO_ACTION="${AUTO_ACTION:-$DEFAULT_AUTO_ACTION}"
 
-# 获取 Claude 最后一条响应
-# 从 transcript.jsonl 中查找最后一条 assistant 类型的消息
+# Get Claude's last response
+# Search for the last assistant type message from transcript.jsonl
 LAST_RESPONSE=""
 while IFS= read -r line; do
     MSG_TYPE=$(echo "$line" | jq -r '.type // empty' 2>/dev/null)
     if [ "$MSG_TYPE" = "assistant" ]; then
-        # 提取文本内容（可能有多个 content 块）
+        # Extract text content (may have multiple content blocks)
         TEXT_CONTENT=$(echo "$line" | jq -r '
             .message.content[] |
             select(.type == "text") |
@@ -59,23 +59,23 @@ while IFS= read -r line; do
     fi
 done < "$TRANSCRIPT_PATH"
 
-# 如果没有找到 Claude 响应（可能是新会话），直接放行
+# If no Claude response found (possibly new session), allow through
 if [ -z "$LAST_RESPONSE" ]; then
     exit 0
 fi
 
-# 检查是否符合金丝雀指令
-# 去除开头的空白字符后检查
+# Check if it matches canary instruction
+# Remove leading whitespace before checking
 TRIMMED_RESPONSE=$(echo "$LAST_RESPONSE" | sed 's/^[[:space:]]*//')
 if echo "$TRIMMED_RESPONSE" | grep -qE "$CANARY_PATTERN"; then
-    # 符合指令，重置失败计数
+    # Matches instruction, reset failure count
     if [ -f "$STATE_FILE" ]; then
         jq '.failure_count = 0' "$STATE_FILE" > "${STATE_FILE}.tmp" && mv "${STATE_FILE}.tmp" "$STATE_FILE"
     fi
     exit 0
 fi
 
-# 不符合指令，记录失败
+# Does not match instruction, record failure
 mkdir -p "$(dirname "$STATE_FILE")"
 
 if [ ! -f "$STATE_FILE" ]; then
@@ -90,13 +90,13 @@ jq --argjson count "$NEW_COUNT" --arg ts "$TIMESTAMP" \
    '.failure_count = $count | .last_failure = $ts' "$STATE_FILE" > "${STATE_FILE}.tmp" \
    && mv "${STATE_FILE}.tmp" "$STATE_FILE"
 
-# 生成输出
+# Generate output
 if [ "$NEW_COUNT" -ge "$FAILURE_THRESHOLD" ]; then
-    # 严重警告
-    REASON="🚨 [Context Canary] 上下文已腐烂！连续 ${NEW_COUNT} 次未遵循金丝雀指令。请执行 /compact 或 /clear"
+    # Critical warning
+    REASON="🚨 [Context Canary] Context rot detected! ${NEW_COUNT} consecutive failures to follow canary instruction. Run /compact or /clear"
 
     if [ "$AUTO_ACTION" = "block" ]; then
-        # 阻止用户继续发送消息
+        # Block user from sending more messages
         cat << EOF
 {
   "decision": "block",
@@ -107,13 +107,13 @@ EOF
     fi
 fi
 
-# 返回警告上下文（会显示给 Claude）
+# Return warning context (will be shown to Claude)
 cat << EOF
 {
   "decision": "allow",
   "hookSpecificOutput": {
     "hookEventName": "UserPromptSubmit",
-    "additionalContext": "⚠️ [Context Canary] 警告：你上一条回复未遵循金丝雀指令（应以 $CANARY_PATTERN 开头）。连续失败: ${NEW_COUNT}/${FAILURE_THRESHOLD}。请确保遵循 CLAUDE.md 中的指令。"
+    "additionalContext": "⚠️ [Context Canary] Warning: Your previous response did not follow the canary instruction (should start with $CANARY_PATTERN). Consecutive failures: ${NEW_COUNT}/${FAILURE_THRESHOLD}. Please follow the instructions in CLAUDE.md."
   }
 }
 EOF

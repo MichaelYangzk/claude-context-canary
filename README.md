@@ -1,38 +1,93 @@
-# Claude Context Canary
+# Claude Context Canary 🐤
 
-上下文腐烂检测插件 - 通过"金丝雀指令"自动检测 Claude Code 的上下文是否正常工作。
+**Detect context rot in Claude Code before it causes problems.**
 
-## 原理
+A context corruption / context rot detection plugin for Claude Code CLI - automatically detect when Claude's context window has degraded using a simple "canary" instruction technique.
 
-在 `claude.md` 中设置一个简单的强制指令（如"每次回复以 `///` 开头"），当 Claude 不再遵循这个指令时，说明上下文可能已经腐烂，需要执行 `/compact` 或 `/clear`。
+[![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](https://opensource.org/licenses/MIT)
 
-## 安装
+## Why "Canary"?
+
+> *In the early days of coal mining, miners would bring canaries into the mines with them. These small birds are extremely sensitive to toxic gases like carbon monoxide and methane. If dangerous gases were present, the canary would show signs of distress or die before the gas levels became lethal to the miners, giving them time to evacuate.*
+
+This plugin applies the same principle to AI context management. Instead of a bird, we use a simple instruction that Claude must follow (like "start every response with `///`"). When Claude stops following this trivial instruction, it's our "canary" warning us that the context has become corrupted - time to run `/compact` or `/clear`!
+
+## The Problem: Context Rot
+
+When using Claude Code for extended sessions, the context window can become "corrupted" or "rotted" - Claude starts forgetting instructions, ignoring rules in CLAUDE.md, or producing inconsistent outputs. This is especially problematic when:
+
+- Working on long coding sessions
+- Having many back-and-forth exchanges
+- Context window approaching capacity
+
+## The Solution: Canary Instructions
+
+This plugin uses a "canary in the coal mine" approach:
+
+1. Add a simple, easy-to-verify instruction to your CLAUDE.md (e.g., "Every response must start with `///`")
+2. The plugin monitors Claude's responses
+3. When Claude stops following this trivial instruction, it's a reliable indicator that context has degraded
+4. You get notified to run `/compact` or `/clear`
+
+## Features
+
+- 🔍 **Real-time monitoring** - Daemon watches all Claude Code sessions
+- 🔔 **System notifications** - Desktop alerts on macOS and Linux
+- ⚙️ **Auto Compact threshold** - Configure when auto-compaction triggers
+- 🚫 **No jq dependency** - Pure bash implementation
+- 🖥️ **Cross-platform** - Works on macOS and Linux
+- 🚀 **Auto-start** - Runs on system boot (LaunchAgent/systemd)
+
+## Quick Start
 
 ```bash
+git clone https://github.com/MichaelYangzk/claude-context-canary.git
 cd claude-context-canary
-chmod +x install.sh
+./install-global.sh
+```
+
+The installer will:
+1. Configure Auto Compact threshold (recommended: 50-70%)
+2. Set up the canary pattern (default: `^///`)
+3. Install the monitoring daemon
+4. Configure auto-start on boot
+5. Optionally add the canary instruction to your `~/.claude/CLAUDE.md`
+
+## Installation Options
+
+### Global Install (Recommended)
+
+```bash
+./install-global.sh
+```
+
+Monitors all Claude Code projects system-wide.
+
+### Project-specific Install
+
+```bash
 ./install.sh
 ```
 
-安装程序会让你选择：
-1. **Hook 方案** - 在你发送消息时检查上一条响应
-2. **守护进程方案（推荐）** - 独立后台进程实时监控
-3. **两者都安装**
+Choose between:
+1. **Hook Method** - Checks previous response when you send a message
+2. **Daemon Method** - Independent background process for real-time monitoring
+3. **Both**
 
-## 配置
+## Configuration
 
-### 1. 金丝雀指令
+### Canary Instruction
 
-在你的 `claude.md` 或 `CLAUDE.md` 文件中添加：
+Add to your `CLAUDE.md` file:
 
 ```markdown
-## 金丝雀指令
-每次回复必须以 /// 开头
+## Canary Instruction
+Every response must start with ///
 ```
 
-### 2. 配置文件
+### Configuration File
 
-编辑 `~/.claude/canary-config.json`：
+Edit `~/.claude/canary-config.json`:
 
 ```json
 {
@@ -43,79 +98,115 @@ chmod +x install.sh
 }
 ```
 
-| 参数 | 说明 | 默认值 |
-|-----|------|-------|
-| `canary_pattern` | 正则表达式，检测输出是否符合要求 | `^///` |
-| `failure_threshold` | 连续失败多少次后发出严重警告 | `2` |
-| `auto_action` | `warn` = 仅警告，`block` = 阻止继续对话 | `warn` |
-| `check_interval` | 守护进程检查间隔（秒） | `2` |
+| Parameter | Description | Default |
+|-----------|-------------|---------|
+| `canary_pattern` | Regex to verify response format | `^///` |
+| `failure_threshold` | Failures before critical alert | `2` |
+| `auto_action` | `warn` or `block` conversation | `warn` |
+| `check_interval` | Check interval in seconds | `2` |
 
-## 使用方法
+## Usage
 
-### 守护进程方案
+### Daemon Commands
 
 ```bash
-# 启动监控
-~/.claude/plugins/canary-daemon.sh start
-
-# 查看状态
-~/.claude/plugins/canary-daemon.sh status
-
-# 停止监控
-~/.claude/plugins/canary-daemon.sh stop
-
-# 前台运行（调试）
-~/.claude/plugins/canary-daemon.sh watch
+~/.claude/plugins/canary-daemon-global.sh status   # Check status
+~/.claude/plugins/canary-daemon-global.sh restart  # Restart daemon
+~/.claude/plugins/canary-daemon-global.sh stop     # Stop daemon
+~/.claude/plugins/canary-daemon-global.sh watch    # Run in foreground (debug)
 ```
 
-当检测到 Claude 未遵循金丝雀指令时，会：
-- 发送系统通知（macOS/Linux）
-- 记录到日志 `/tmp/claude-context-canary.log`
+### What Happens When Context Rot is Detected
 
-### Hook 方案
+1. **First failure**: Warning notification
+2. **Consecutive failures**: Critical alert recommending `/compact`
+3. **If `auto_action=block`**: Prevents sending more messages until cleared
 
-安装后自动生效。当你发送下一条消息时，会检查 Claude 上一条响应是否符合要求。
+## How It Works
 
-如果不符合，会：
-- 向 Claude 注入警告上下文
-- 当达到失败阈值且 `auto_action=block` 时，阻止发送消息
+```
+┌─────────────────┐     ┌──────────────────┐     ┌─────────────────┐
+│   CLAUDE.md     │     │  Canary Daemon   │     │  Notification   │
+│                 │     │                  │     │                 │
+│ "Start with ///"│────▶│ Monitor responses│────▶│ "Context rot    │
+│                 │     │ Check pattern    │     │  detected!"     │
+└─────────────────┘     └──────────────────┘     └─────────────────┘
+```
 
-## 日志
+1. Daemon monitors `~/.claude/projects/*/transcript.jsonl` files
+2. Extracts Claude's responses and checks against canary pattern
+3. Tracks consecutive failures
+4. Sends system notification when threshold exceeded
 
-- 守护进程日志：`/tmp/claude-context-canary.log`
-- 状态文件：`~/.claude/canary-state.json`
+## Logs & State
 
-## 限制
+- **Daemon log**: `~/.claude/canary.log`
+- **State file**: `~/.claude/canary-state.json`
+- **Config file**: `~/.claude/canary-config.json`
 
-⚠️ **重要**：由于 Claude Code 的 API 限制，此插件**无法**自动执行 `/compact` 或 `/clear` 命令。它只能：
-1. 发出警告通知
-2. 阻止你继续对话（如果配置了 `auto_action=block`）
+## Limitations
 
-你需要手动执行清理操作。
+⚠️ Due to Claude Code API limitations, this plugin **cannot** automatically execute `/compact` or `/clear`. It only:
+- Sends warning notifications
+- Optionally blocks conversation until you take action
 
-## 故障排查
+You must manually run `/compact` or `/clear` when notified.
 
-### Hook 不触发？
-- 确认 `~/.claude/settings.json` 中的 hooks 配置正确
-- 尝试使用守护进程方案
+## Troubleshooting
 
-### 通知不显示？
-- macOS：需要允许终端发送通知
-- Linux：需要安装 `notify-send`
+### Notifications not showing?
+- **macOS**: System Preferences → Notifications → Allow from Terminal
+- **Linux**: Install `notify-send` (`apt install libnotify-bin`)
 
-### 检测不准确？
-- 调整 `canary_pattern` 正则表达式
-- 确保 claude.md 中的指令清晰明确
+### Daemon not starting?
+```bash
+# Check logs
+cat ~/.claude/canary.log
 
-## 卸载
+# Run in foreground to debug
+~/.claude/plugins/canary-daemon-global.sh watch
+```
+
+### False positives?
+- Adjust `canary_pattern` regex
+- Increase `failure_threshold`
+- Make sure your canary instruction is clear and simple
+
+## Uninstall
 
 ```bash
+# Stop daemon
+~/.claude/plugins/canary-daemon-global.sh stop
+
+# Remove files
 rm -f ~/.claude/plugins/canary-*.sh
 rm -f ~/.claude/canary-config.json
 rm -f ~/.claude/canary-state.json
-# 手动编辑 ~/.claude/settings.json 移除相关 hooks
+
+# macOS: Remove LaunchAgent
+launchctl unload ~/Library/LaunchAgents/com.claude.canary.plist
+rm -f ~/Library/LaunchAgents/com.claude.canary.plist
+
+# Linux: Remove systemd service
+systemctl --user disable claude-canary.service
+rm -f ~/.config/systemd/user/claude-canary.service
 ```
 
-## 许可
+## Related Concepts
+
+- **Context window management** - Managing LLM context limits
+- **Context rot / context corruption** - Degradation of AI response quality over extended sessions
+- **Prompt injection detection** - Monitoring AI behavior consistency
+- **Claude Code CLI** - Anthropic's official CLI tool for Claude
+
+## Contributing
+
+Issues and PRs welcome!
+
+## License
 
 MIT License
+
+---
+
+**Keywords**: Claude Code, context rot, context corruption, context window, LLM monitoring, Claude CLI, AI context management, canary test, prompt degradation detection

@@ -1,6 +1,6 @@
 #!/bin/bash
 #
-# Claude Context Canary - 全局安装脚本 (无 jq 依赖)
+# Claude Context Canary - Global Installation Script (no jq dependency)
 #
 
 set -e
@@ -12,14 +12,14 @@ SETTINGS_FILE="${CLAUDE_DIR}/settings.json"
 DAEMON_SCRIPT="canary-daemon-global.sh"
 
 echo "=========================================="
-echo "  Claude Context Canary - 全局安装"
+echo "  Claude Context Canary - Global Install"
 echo "=========================================="
 echo ""
 
-# 1. Auto Compact 阈值
-echo "[1/4] 配置 Auto Compact 阈值"
-echo "  默认 95%，建议设置 50-70%"
-read -p "  输入阈值 (1-95，默认 60): " threshold
+# 1. Auto Compact threshold
+echo "[1/4] Configure Auto Compact Threshold"
+echo "  Default is 95%, recommended 50-70%"
+read -p "  Enter threshold (1-95, default 60): " threshold
 threshold="${threshold:-60}"
 
 if ! [[ "$threshold" =~ ^[0-9]+$ ]] || [ "$threshold" -lt 1 ] || [ "$threshold" -gt 95 ]; then
@@ -28,48 +28,48 @@ fi
 
 mkdir -p "$CLAUDE_DIR"
 
-# 更新 settings.json（纯 bash 实现）
+# Update settings.json (pure bash implementation)
 if [ -f "$SETTINGS_FILE" ]; then
     cp "$SETTINGS_FILE" "${SETTINGS_FILE}.backup"
 
-    # 检查是否已有 env 和 CLAUDE_AUTOCOMPACT_PCT_OVERRIDE
+    # Check if env and CLAUDE_AUTOCOMPACT_PCT_OVERRIDE exist
     if grep -q '"env"' "$SETTINGS_FILE"; then
         if grep -q 'CLAUDE_AUTOCOMPACT_PCT_OVERRIDE' "$SETTINGS_FILE"; then
-            # 替换现有值
+            # Replace existing value
             sed -i.tmp "s/\"CLAUDE_AUTOCOMPACT_PCT_OVERRIDE\"[[:space:]]*:[[:space:]]*\"[^\"]*\"/\"CLAUDE_AUTOCOMPACT_PCT_OVERRIDE\": \"$threshold\"/" "$SETTINGS_FILE"
             rm -f "${SETTINGS_FILE}.tmp"
         else
-            # 在 env 对象中添加
+            # Add to existing env object
             sed -i.tmp "s/\"env\"[[:space:]]*:[[:space:]]*{/\"env\": { \"CLAUDE_AUTOCOMPACT_PCT_OVERRIDE\": \"$threshold\",/" "$SETTINGS_FILE"
             rm -f "${SETTINGS_FILE}.tmp"
         fi
     else
-        # 在根对象中添加 env
+        # Add env to root object
         sed -i.tmp "s/{/{\"env\": {\"CLAUDE_AUTOCOMPACT_PCT_OVERRIDE\": \"$threshold\"}, /" "$SETTINGS_FILE"
         rm -f "${SETTINGS_FILE}.tmp"
     fi
 else
     echo "{\"env\": {\"CLAUDE_AUTOCOMPACT_PCT_OVERRIDE\": \"$threshold\"}}" > "$SETTINGS_FILE"
 fi
-echo "  ✓ Auto Compact 阈值设为 ${threshold}%"
+echo "  ✓ Auto Compact threshold set to ${threshold}%"
 
-# 2. 金丝雀模式
+# 2. Canary pattern
 echo ""
-echo "[2/4] 配置金丝雀指令"
-echo "  默认检测输出是否以 /// 开头"
-read -p "  输入正则表达式 (默认 ^///): " pattern
+echo "[2/4] Configure Canary Pattern"
+echo "  Default: check if output starts with ///"
+read -p "  Enter regex pattern (default ^///): " pattern
 pattern="${pattern:-^///}"
 
-# 3. 安装守护进程
+# 3. Install daemon
 echo ""
-echo "[3/4] 安装全局守护进程"
+echo "[3/4] Install Global Daemon"
 
 mkdir -p "$PLUGINS_DIR"
 cp "$SCRIPT_DIR/$DAEMON_SCRIPT" "$PLUGINS_DIR/"
 chmod +x "$PLUGINS_DIR/$DAEMON_SCRIPT"
-echo "  ✓ 已安装 $PLUGINS_DIR/$DAEMON_SCRIPT"
+echo "  ✓ Installed $PLUGINS_DIR/$DAEMON_SCRIPT"
 
-# 创建配置
+# Create config
 cat > "${CLAUDE_DIR}/canary-config.json" << EOF
 {
   "canary_pattern": "$pattern",
@@ -77,17 +77,17 @@ cat > "${CLAUDE_DIR}/canary-config.json" << EOF
   "check_interval": 2
 }
 EOF
-echo "  ✓ 已创建 ${CLAUDE_DIR}/canary-config.json"
+echo "  ✓ Created ${CLAUDE_DIR}/canary-config.json"
 
-# 4. 开机自启
+# 4. Auto-start on boot
 echo ""
-echo "[4/4] 配置开机自启"
+echo "[4/4] Configure Auto-Start"
 
 if [[ "$OSTYPE" == "darwin"* ]]; then
     PLIST="${HOME}/Library/LaunchAgents/com.claude.canary.plist"
     mkdir -p "$(dirname "$PLIST")"
 
-    # 先卸载旧的
+    # Unload old one first
     launchctl unload "$PLIST" 2>/dev/null || true
 
     cat > "$PLIST" << EOF
@@ -115,11 +115,11 @@ if [[ "$OSTYPE" == "darwin"* ]]; then
 EOF
 
     launchctl load "$PLIST"
-    echo "  ✓ macOS LaunchAgent 已创建并启动"
-    echo "  ✓ 开机自动运行"
+    echo "  ✓ macOS LaunchAgent created and started"
+    echo "  ✓ Will auto-run on boot"
 
 elif [[ "$OSTYPE" == "linux"* ]]; then
-    # Linux - 尝试 systemd，如果失败就跳过
+    # Linux - try systemd, skip if unavailable
     if command -v systemctl &> /dev/null; then
         SERVICE_DIR="${HOME}/.config/systemd/user"
         SERVICE="${SERVICE_DIR}/claude-canary.service"
@@ -143,57 +143,57 @@ EOF
         systemctl --user daemon-reload 2>/dev/null || true
         systemctl --user enable claude-canary.service 2>/dev/null || true
         systemctl --user start claude-canary.service 2>/dev/null || true
-        echo "  ✓ systemd user service 已创建"
+        echo "  ✓ systemd user service created"
     else
-        echo "  ⚠ systemd 不可用，请手动启动守护进程"
-        echo "  运行: $PLUGINS_DIR/$DAEMON_SCRIPT start"
+        echo "  ⚠ systemd not available, please start daemon manually"
+        echo "  Run: $PLUGINS_DIR/$DAEMON_SCRIPT start"
     fi
 fi
 
-# 启动守护进程（如果还没启动）
+# Start daemon (if not already running)
 "$PLUGINS_DIR/$DAEMON_SCRIPT" start 2>/dev/null || true
 
 echo ""
 echo "=========================================="
-echo "  安装完成！"
+echo "  Installation Complete!"
 echo "=========================================="
 echo ""
-echo "配置摘要:"
+echo "Configuration Summary:"
 echo "  Auto Compact: ${threshold}%"
-echo "  金丝雀模式: $pattern"
-echo "  守护进程: $PLUGINS_DIR/$DAEMON_SCRIPT"
-echo "  日志文件: ${CLAUDE_DIR}/canary.log"
+echo "  Canary Pattern: $pattern"
+echo "  Daemon: $PLUGINS_DIR/$DAEMON_SCRIPT"
+echo "  Log File: ${CLAUDE_DIR}/canary.log"
 echo ""
-echo "管理命令:"
-echo "  $PLUGINS_DIR/$DAEMON_SCRIPT status   # 查看状态"
-echo "  $PLUGINS_DIR/$DAEMON_SCRIPT restart  # 重启"
-echo "  $PLUGINS_DIR/$DAEMON_SCRIPT stop     # 停止"
+echo "Management Commands:"
+echo "  $PLUGINS_DIR/$DAEMON_SCRIPT status   # Check status"
+echo "  $PLUGINS_DIR/$DAEMON_SCRIPT restart  # Restart"
+echo "  $PLUGINS_DIR/$DAEMON_SCRIPT stop     # Stop"
 echo ""
-echo "最后一步 - 在全局 CLAUDE.md 添加金丝雀指令:"
+echo "Final Step - Add canary instruction to global CLAUDE.md:"
 echo ""
-echo "  文件: ~/.claude/CLAUDE.md"
-echo "  内容: 每次回复必须以 /// 开头"
+echo "  File: ~/.claude/CLAUDE.md"
+echo "  Content: Every response must start with ///"
 echo ""
 
-# 询问是否自动添加
-read -p "是否自动添加到 ~/.claude/CLAUDE.md? (y/n): " add_canary
+# Ask if user wants to auto-add
+read -p "Auto-add to ~/.claude/CLAUDE.md? (y/n): " add_canary
 if [ "$add_canary" = "y" ] || [ "$add_canary" = "Y" ]; then
     GLOBAL_CLAUDE_MD="${HOME}/.claude/CLAUDE.md"
     if [ -f "$GLOBAL_CLAUDE_MD" ]; then
-        if ! grep -q "每次回复必须以" "$GLOBAL_CLAUDE_MD"; then
+        if ! grep -q "Every response must start with" "$GLOBAL_CLAUDE_MD"; then
             echo "" >> "$GLOBAL_CLAUDE_MD"
-            echo "## 金丝雀指令" >> "$GLOBAL_CLAUDE_MD"
-            echo "每次回复必须以 /// 开头" >> "$GLOBAL_CLAUDE_MD"
-            echo "✓ 已添加到 $GLOBAL_CLAUDE_MD"
+            echo "## Canary Instruction" >> "$GLOBAL_CLAUDE_MD"
+            echo "Every response must start with ///" >> "$GLOBAL_CLAUDE_MD"
+            echo "✓ Added to $GLOBAL_CLAUDE_MD"
         else
-            echo "⚠ 金丝雀指令已存在"
+            echo "⚠ Canary instruction already exists"
         fi
     else
-        echo "## 金丝雀指令" > "$GLOBAL_CLAUDE_MD"
-        echo "每次回复必须以 /// 开头" >> "$GLOBAL_CLAUDE_MD"
-        echo "✓ 已创建 $GLOBAL_CLAUDE_MD"
+        echo "## Canary Instruction" > "$GLOBAL_CLAUDE_MD"
+        echo "Every response must start with ///" >> "$GLOBAL_CLAUDE_MD"
+        echo "✓ Created $GLOBAL_CLAUDE_MD"
     fi
 fi
 
 echo ""
-echo "✅ 全局安装完成！重启 Claude Code 使设置生效。"
+echo "✅ Global installation complete! Restart Claude Code for settings to take effect."
