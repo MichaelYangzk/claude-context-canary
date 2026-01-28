@@ -59,7 +59,8 @@ get_active_transcripts() {
     if [ ! -d "$CLAUDE_PROJECTS_DIR" ]; then
         return
     fi
-    find "$CLAUDE_PROJECTS_DIR" -name "transcript.jsonl" -mmin -5 2>/dev/null
+    # Find .jsonl files modified in the last 5 minutes (excluding subagents)
+    find "$CLAUDE_PROJECTS_DIR" -maxdepth 3 -name "*.jsonl" -mmin -5 2>/dev/null | grep -v "/subagents/"
 }
 
 get_response_hash() {
