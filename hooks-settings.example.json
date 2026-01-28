@@ -1,0 +1,15 @@
+{
+  "hooks": {
+    "Stop": [
+      {
+        "hooks": [
+          {
+            "type": "command",
+            "command": "~/.claude/plugins/canary-check.sh",
+            "timeout": 5
+          }
+        ]
+      }
+    ]
+  }
+}

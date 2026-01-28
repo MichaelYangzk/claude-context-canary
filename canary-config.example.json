@@ -1,0 +1,10 @@
+{
+  "canary_pattern": "^///",
+  "failure_threshold": 2,
+  "auto_action": "warn",
+  "_comments": {
+    "canary_pattern": "正则表达式，用于检测 Claude 输出是否符合要求。默认检测是否以 /// 开头",
+    "failure_threshold": "连续失败多少次后发出严重警告",
+    "auto_action": "warn = 仅警告 | block = 阻止继续对话"
+  }
+}
